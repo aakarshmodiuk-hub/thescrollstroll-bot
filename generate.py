@@ -8,9 +8,13 @@ import xml.etree.ElementTree as ET
 
 from PIL import Image, ImageDraw, ImageFont
 
-# If Gemini ever says "model not found", change this to a current model name
-# from aistudio.google.com (for example gemini-3.5-flash-lite).
-MODEL = "gemini-2.5-flash"
+# The script tries these in order and uses the first one that works.
+MODELS = [
+    "gemini-3.5-flash-lite",
+    "gemini-3.5-flash",
+    "gemini-3.6-flash",
+    "gemini-2.5-flash-lite",
+]
 
 API_KEY = os.environ["GEMINI_API_KEY"]
 REPO = os.environ.get("GITHUB_REPOSITORY", "USER/REPO")
@@ -51,10 +55,6 @@ def trend_topics():
 
 
 def ask_gemini(prompt):
-    url = (
-        "https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{MODEL}:generateContent"
-    )
     body = json.dumps(
         {
             "contents": [{"parts": [{"text": prompt}]}],
@@ -64,24 +64,37 @@ def ask_gemini(prompt):
             },
         }
     ).encode()
-    for attempt in range(4):
-        try:
-            req = urllib.request.Request(
-                url,
-                data=body,
-                headers={
-                    "Content-Type": "application/json",
-                    "x-goog-api-key": API_KEY,
-                },
-            )
-            with urllib.request.urlopen(req, timeout=60) as r:
-                data = json.load(r)
-            result = json.loads(data["candidates"][0]["content"]["parts"][0]["text"])
-            return result[0] if isinstance(result, list) else result
-        except Exception as e:
-            print("Gemini attempt failed:", e)
-            time.sleep(10 * (attempt + 1))
-    raise SystemExit("Gemini failed after several tries")
+    for model in MODELS:
+        url = (
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{model}:generateContent"
+        )
+        for attempt in range(2):
+            try:
+                req = urllib.request.Request(
+                    url,
+                    data=body,
+                    headers={
+                        "Content-Type": "application/json",
+                        "x-goog-api-key": API_KEY,
+                    },
+                )
+                with urllib.request.urlopen(req, timeout=60) as r:
+                    data = json.load(r)
+                result = json.loads(
+                    data["candidates"][0]["content"]["parts"][0]["text"]
+                )
+                print("Used model:", model)
+                return result[0] if isinstance(result, list) else result
+            except urllib.error.HTTPError as e:
+                print(model, "failed:", e.code, e.read()[:300])
+                if e.code == 404:
+                    break  # model name not valid, try the next one
+                time.sleep(15)
+            except Exception as e:
+                print(model, "failed:", e)
+                time.sleep(15)
+    raise SystemExit("Gemini failed with every model")
 
 
 def wrap(text, font, draw, max_w):
