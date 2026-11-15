@@ -148,29 +148,56 @@ def render(text, path):
 
 
 # ---------- main ----------
+NOW = datetime.datetime.now(datetime.timezone.utc)
+STAMP = NOW.strftime("%Y-%m-%d-%H%M")
+
 history = []
 if os.path.exists("history.json"):
-    history = json.load(open("history.json"))
-recent = [h["topic"] for h in history[-20:]]
+    history = json.load(open("history.json", encoding="utf-8"))
+recent = [h["topic"] for h in history[-60:]]
+recent_texts = [h["text"].replace("\n", " / ") for h in history[-8:]]
+
+hour = NOW.hour
+if 5 <= hour < 12:
+    time_of_day = "morning"
+elif 12 <= hour < 17:
+    time_of_day = "afternoon"
+elif 17 <= hour < 22:
+    time_of_day = "evening"
+else:
+    time_of_day = "late night"
+
+FORMATS = [
+    "Me: ... / Also me: ...",
+    "Nobody: / Absolutely nobody: / Me: ...",
+    "POV: ...",
+    "Expectation: ... / Reality: ...",
+    "A group chat observation",
+    "A one-line observation about modern life",
+    "Things that hit different at this time of day",
+    "My brain: ... / Me: ...",
+]
+chosen_format = random.choice(FORMATS)
 
 topics = trend_topics()
-trend_text = "\n".join("- " + t for t in topics) or "- (no trend data today, use evergreen relatable themes)"
+trend_text = "\n".join("- " + t for t in topics) or "- (no trend data, use evergreen relatable themes)"
 
 prompt = f"""You run TheScrollStroll, an Instagram page of relatable, funny, light-hearted memes for a broad young-adult audience.
-Today's date: {TODAY}.
+Today's date: {TODAY}. It is currently {time_of_day} (UTC).
 
 Trending right now:
 {trend_text}
 
 Recently used topics (do NOT repeat these): {recent}
+Recent memes (do NOT write anything similar): {recent_texts}
 
-Avoid overused clichés (going to bed early / 3 AM spirals, Mondays, coffee, adulting). Aim for a specific, surprising observation that makes people say "this is so me".
-
-Write ONE original meme that is relatable (everyday life, work, sleep, money, social media, group chats, procrastination, etc).
+Write ONE original meme that is relatable (everyday life, work, sleep, money, social media, group chats, procrastination, food, friendships, etc.).
 You may nod to a trend if it fits naturally, but the joke must make sense to someone who does not know the trend.
+Avoid overused cliches (going to bed early / 3 AM spirals, Mondays, coffee, adulting). Aim for a specific, surprising observation that makes people say "this is so me".
 No politics, no tragedies, no hate, no insults to real people.
 
-Rules for meme_text: max 140 characters, two short lines separated by a newline, in a format like "Me: ... / Also me: ..." or "Nobody: / Me: ...". No emojis in meme_text.
+Use this meme format: {chosen_format}
+Rules for meme_text: max 140 characters, short lines separated by a newline, no emojis in meme_text.
 
 Return JSON with these keys:
 topic (short string), meme_text (string), caption (1-2 sentences, up to 2 emojis allowed),
@@ -187,12 +214,14 @@ for _ in range(3):
 meme = best
 
 os.makedirs("output", exist_ok=True)
-image_name = f"{TODAY}.jpg"
+image_name = f"{STAMP}.jpg"
 render(meme["meme_text"], f"output/{image_name}")
 
 caption = meme["caption"] + "\n\n" + " ".join("#" + h.lstrip("#") for h in meme["hashtags"])
 payload = {
     "date": TODAY,
+    "epoch": int(NOW.timestamp()),
+    "generated_at": NOW.isoformat(),
     "caption": caption,
     "image_url": f"https://raw.githubusercontent.com/{REPO}/main/output/{image_name}",
     "topic": meme["topic"],
@@ -202,10 +231,10 @@ with open("output/today.json", "w", encoding="utf-8") as f:
 
 history.append({"date": TODAY, "topic": meme["topic"], "text": meme["meme_text"]})
 with open("history.json", "w", encoding="utf-8") as f:
-    json.dump(history[-60:], f, ensure_ascii=False, indent=2)
+    json.dump(history[-200:], f, ensure_ascii=False, indent=2)
 
-# tidy up: delete dated images older than 14 days
-cutoff = (datetime.date.today() - datetime.timedelta(days=14)).isoformat() + ".jpg"
+# tidy up: delete images older than 14 days
+cutoff = (datetime.date.today() - datetime.timedelta(days=14)).isoformat()
 for name in os.listdir("output"):
     if name.endswith(".jpg") and name[0].isdigit() and name < cutoff:
         os.remove(os.path.join("output", name))
