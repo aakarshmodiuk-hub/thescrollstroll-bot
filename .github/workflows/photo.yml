@@ -1,0 +1,37 @@
+name: Photo meme
+
+on:
+  schedule:
+    - cron: "30 7,13,19 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  make-photo-meme:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install tools
+        run: pip install -r requirements.txt
+
+      - name: Create photo meme
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+        run: python generate_photo.py
+
+      - name: Save results
+        run: |
+          git config user.name "meme-bot"
+          git config user.email "bot@users.noreply.github.com"
+          git add output history_photo.json
+          git commit -m "Photo meme" || echo "Nothing to commit"
+          git pull --rebase
+          git push
