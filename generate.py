@@ -164,6 +164,8 @@ Trending right now:
 
 Recently used topics (do NOT repeat these): {recent}
 
+Avoid overused clichés (going to bed early / 3 AM spirals, Mondays, coffee, adulting). Aim for a specific, surprising observation that makes people say "this is so me".
+
 Write ONE original meme that is relatable (everyday life, work, sleep, money, social media, group chats, procrastination, etc).
 You may nod to a trend if it fits naturally, but the joke must make sense to someone who does not know the trend.
 No politics, no tragedies, no hate, no insults to real people.
