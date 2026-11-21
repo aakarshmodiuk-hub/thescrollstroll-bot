@@ -46,7 +46,7 @@ FONT_CANDIDATES = [
     "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
 ]
 
-GEMINI_MODELS = ["gemini-flash-latest", "gemini-3.8-flash"]
+GEMINI_MODELS = ["gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-3.8-flash"]
 MAX_HASHTAGS = 10          # Instagram allows 30; fewer, relevant ones work better
 MAX_CAPTION_CHARS = 2000   # Instagram limit is 2200
 
@@ -136,6 +136,24 @@ def clean_search_word(text):
     return " ".join(words[:2]).lower() if words else None
 
 
+def call_with_retry(url, body, attempts=2, timeout=60):
+    """Retry on timeouts and server errors (5xx); a 404/400 fails straight away."""
+    import urllib.error
+    last = None
+    for n in range(1, attempts + 1):
+        try:
+            return http_get_json(url, {"Content-Type": "application/json"}, body, timeout=timeout)
+        except urllib.error.HTTPError as exc:
+            if exc.code < 500 and exc.code != 429:
+                raise
+            last = exc
+        except Exception as exc:  # noqa: BLE001  (timeouts, connection resets)
+            last = exc
+        print(f"CONTENT: attempt {n}/{attempts} failed ({last})")
+        time.sleep(3)
+    raise last
+
+
 def ask_gemini(category):
     """One call returns quote + hook + hashtags + visual together, so they match each other."""
     key = (os.environ.get("GEMINI_API_KEY") or "").strip()
@@ -162,7 +180,7 @@ def ask_gemini(category):
         try:
             url = ("https://generativelanguage.googleapis.com/v1beta/models/"
                    f"{model}:generateContent?key={key}")
-            data = http_get_json(url, {"Content-Type": "application/json"}, body)
+            data = call_with_retry(url, body)
             text = data["candidates"][0]["content"]["parts"][0]["text"]
             text = re.sub(r"^```(?:json)?|```$", "", text.strip()).strip()
             obj = json.loads(text)
