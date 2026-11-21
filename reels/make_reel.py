@@ -115,7 +115,7 @@ def pick_quote(category):
                 "Make it relatable and shareable. Output only the quote."
             )
             url = ("https://generativelanguage.googleapis.com/v1beta/models/"
-                   f"gemini-2.0-flash:generateContent?key={key}")
+                   f"gemini-flash-latest:generateContent?key={key}")
             body = json.dumps({"contents": [{"parts": [{"text": prompt}]}]}).encode()
             data = http_get_json(url, {"Content-Type": "application/json"}, body)
             text = data["candidates"][0]["content"]["parts"][0]["text"].strip().strip('"')
