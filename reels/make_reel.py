@@ -127,29 +127,41 @@ def pick_quote(category):
 
 
 def download_background(terms):
-    """Download a Pixabay video. Returns a Path, or None if unavailable."""
-    key = os.environ.get("PIXABAY_API_KEY")
+    """Download a Pixabay video. Returns a Path, or None if unavailable (reason is printed)."""
+    key = (os.environ.get("PIXABAY_API_KEY") or "").strip()
     if not key:
+        print("BACKGROUND: PIXABAY_API_KEY is empty or missing in this run -> gradient used. "
+              "Check the secret name is exactly PIXABAY_API_KEY under Settings > Secrets > Actions.")
         return None
-    try:
-        q = urllib.parse.quote(random.choice(terms))
-        url = (f"https://pixabay.com/api/videos/?key={key}&q={q}"
-               "&video_type=film&per_page=30&safesearch=true")
-        hits = http_get_json(url).get("hits", [])
-        hits = [h for h in hits if 5 <= h.get("duration", 0) <= 60]
-        if not hits:
-            return None
-        hit = random.choice(hits)
-        vids = hit["videos"]
-        link = (vids.get("medium") or vids.get("large") or vids.get("small"))["url"]
-        dest = TMP_DIR / "bg.mp4"
-        req = urllib.request.Request(link, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=60) as r, open(dest, "wb") as f:
-            f.write(r.read())
-        return dest
-    except Exception as exc:  # noqa: BLE001
-        print(f"Pixabay failed ({exc}); using gradient background.")
-        return None
+    queries = random.sample(terms, k=min(3, len(terms))) + ["nature", ""]
+    for term in queries:
+        try:
+            q = urllib.parse.quote(term)
+            url = f"https://pixabay.com/api/videos/?key={key}&q={q}&per_page=30&safesearch=true"
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=30) as r:
+                data = json.loads(r.read().decode("utf-8"))
+            hits = [h for h in data.get("hits", []) if 4 <= h.get("duration", 0) <= 60]
+            print(f"BACKGROUND: search '{term}' -> {len(data.get('hits', []))} hits, {len(hits)} usable")
+            if not hits:
+                continue
+            hit = random.choice(hits)
+            vids = hit["videos"]
+            for size in ("medium", "large", "small", "tiny"):
+                link = (vids.get(size) or {}).get("url")
+                if not link:
+                    continue
+                dest = TMP_DIR / "bg.mp4"
+                req = urllib.request.Request(link, headers={"User-Agent": "Mozilla/5.0"})
+                with urllib.request.urlopen(req, timeout=90) as r, open(dest, "wb") as f:
+                    f.write(r.read())
+                if dest.stat().st_size > 50_000:
+                    print(f"BACKGROUND: using Pixabay video ({size}, {dest.stat().st_size / 1e6:.1f} MB)")
+                    return dest
+        except Exception as exc:  # noqa: BLE001
+            print(f"BACKGROUND: search '{term}' failed: {exc}")
+    print("BACKGROUND: all Pixabay attempts failed -> gradient used.")
+    return None
 
 
 def load_font(size):
