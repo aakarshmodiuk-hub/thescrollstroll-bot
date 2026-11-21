@@ -1,18 +1,23 @@
-"""TheScrollStroll - Reel lane.
+"""TheScrollStroll - Reel lane (quotes on a looping video background).
 
-Creates a vertical (1080x1920) quote Reel: looping background video + auto-fitted text.
-Outputs reels/out/reel.mp4 and reels/out/reel.json (caption + video url for Make).
+Makes a vertical (1080x1920) Reel with an auto-fitted quote and writes:
+  reels/out/reel.mp4   the video
+  reels/out/reel.json  caption + hashtags + video url (read by Make)
 
-Secrets (all optional - the script still works with none of them):
-  PIXABAY_API_KEY  -> real video backgrounds (otherwise an animated gradient is used)
-  GEMINI_API_KEY   -> fresh AI-written quotes (otherwise the built-in list is used)
+Quote, caption hook, hashtags and background search word are all written TOGETHER
+for the same idea, so they always match each other. Without Gemini the built-in
+quotes + that category's hashtags are used (still matched).
+
+Secrets (optional - the script still works with none):
+  PIXABAY_API_KEY  -> real video backgrounds
+  GEMINI_API_KEY   -> fresh AI-written quotes, captions and hashtags
 """
 import json
 import os
 import random
+import re
 import subprocess
 import sys
-import textwrap
 import time
 import urllib.parse
 import urllib.request
@@ -29,7 +34,7 @@ REPO_RAW = os.environ.get(
     "https://raw.githubusercontent.com/aakarshmodiuk-hub/thescrollstroll-bot/main",
 )
 
-# Text must stay inside this safe box (Instagram's UI covers the very top/bottom/right edge)
+# Text stays inside this safe box (Instagram's buttons cover the edges)
 BOX_LEFT, BOX_RIGHT = 90, W - 90
 BOX_TOP, BOX_BOTTOM = 420, 1380
 MAX_FONT, MIN_FONT = 112, 52
@@ -41,21 +46,36 @@ FONT_CANDIDATES = [
     "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
 ]
 
-# category -> (background search terms, hashtags)
+GEMINI_MODELS = ["gemini-flash-latest", "gemini-3.8-flash"]
+MAX_HASHTAGS = 10          # Instagram allows 30; fewer, relevant ones work better
+MAX_CAPTION_CHARS = 2000   # Instagram limit is 2200
+
+# category -> (Pixabay search words, core hashtags that always fit the category)
 CATEGORIES = {
     "inspiration": (["sunrise", "mountain clouds", "ocean waves", "forest light"],
-                    "#motivation #inspiration #mindset #growth"),
+                    ["#motivation", "#inspiration", "#mindset", "#growth", "#positivethinking"]),
     "professional life": (["city skyline", "office window", "city night", "laptop work"],
-                          "#careergrowth #worklife #leadership #success"),
+                          ["#careergrowth", "#worklife", "#leadership", "#success", "#careeradvice"]),
     "personal life": (["rain window", "sunset", "walking path", "coffee morning"],
-                      "#selfgrowth #lifelessons #mentalclarity #dailythoughts"),
+                      ["#selfgrowth", "#lifelessons", "#mentalclarity", "#selfcare", "#innerpeace"]),
     "relationships": (["sunset beach", "city lights", "autumn leaves", "starry sky"],
-                      "#relationships #friendship #connection #lifequotes"),
+                      ["#relationships", "#friendship", "#connection", "#lifequotes", "#kindness"]),
     "discipline and habits": (["running track", "sunrise gym", "clock time", "road"],
-                              "#discipline #habits #consistency #selfimprovement"),
-    "money and mindset": (["city traffic", "skyscrapers", "stock city night", "rain city"],
-                          "#moneymindset #financialfreedom #wealth #growthmindset"),
+                              ["#discipline", "#habits", "#consistency", "#selfimprovement", "#focus"]),
+    "money and mindset": (["city traffic", "skyscrapers", "rain city", "city night"],
+                          ["#moneymindset", "#financialfreedom", "#wealth", "#growthmindset", "#abundance"]),
 }
+ALWAYS_TAGS = ["#quotes", "#reels"]
+# spammy tags that hurt reach and do not describe the content
+BANNED_TAGS = {"#fyp", "#foryou", "#foryoupage", "#viral", "#explore", "#trending", "#follow",
+               "#followme", "#like4like", "#instagood", "#love", "#instagram"}
+
+CTAS = [
+    "Save this for later and follow {h} for daily reminders.",
+    "Send this to someone who needs it today. Follow {h} for more.",
+    "Read it twice. Then follow {h} for daily reminders.",
+    "Tag a friend who needs this. More daily on {h}.",
+]
 
 # Original lines (no famous quotes, so no attribution/copyright worries)
 FALLBACK_QUOTES = {
@@ -104,37 +124,96 @@ def http_get_json(url, headers=None, data=None, timeout=30):
         return json.loads(r.read().decode("utf-8"))
 
 
-def pick_quote(category):
-    """Try Gemini for a fresh quote; fall back to the built-in list."""
-    key = os.environ.get("GEMINI_API_KEY")
-    if key:
+# ---------------------------------------------------------------- content ----
+def clean_tag(tag):
+    """'#Self Growth!' -> '#selfgrowth' (letters/digits only, lowercase, 3-30 chars) or None."""
+    body = re.sub(r"[^a-z0-9]", "", str(tag).lower().lstrip("#"))
+    return f"#{body}" if 3 <= len(body) <= 30 else None
+
+
+def clean_search_word(text):
+    words = re.sub(r"[^a-zA-Z ]", " ", str(text)).split()
+    return " ".join(words[:2]).lower() if words else None
+
+
+def ask_gemini(category):
+    """One call returns quote + hook + hashtags + visual together, so they match each other."""
+    key = (os.environ.get("GEMINI_API_KEY") or "").strip()
+    if not key:
+        print("CONTENT: GEMINI_API_KEY missing -> built-in quote.")
+        return None
+    prompt = (
+        f"You write Instagram Reel content for the page {HANDLE}. Topic: {category}.\n"
+        "Return ONLY a JSON object with these keys:\n"
+        '  "quote": one original, punchy, relatable quote, max 22 words, no author, '
+        "no emojis, no quotation marks;\n"
+        '  "hook": one short caption line (max 14 words) that reacts to THIS quote, '
+        "no hashtags;\n"
+        '  "hashtags": 4 to 6 lowercase hashtags specific to THIS quote\'s idea '
+        "(not generic spam like #fyp or #viral);\n"
+        '  "visual": 1 or 2 plain words describing a calm background video that fits the '
+        'mood of the quote (for example "sunrise", "city night", "ocean").'
+    )
+    body = json.dumps({
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"responseMimeType": "application/json"},
+    }).encode()
+    for model in GEMINI_MODELS:
         try:
-            prompt = (
-                f"Write ONE original, punchy quote about {category} for an Instagram Reel. "
-                "Max 22 words, no author, no hashtags, no emojis, no quotation marks. "
-                "Make it relatable and shareable. Output only the quote."
-            )
             url = ("https://generativelanguage.googleapis.com/v1beta/models/"
-                   f"gemini-flash-latest:generateContent?key={key}")
-            body = json.dumps({"contents": [{"parts": [{"text": prompt}]}]}).encode()
+                   f"{model}:generateContent?key={key}")
             data = http_get_json(url, {"Content-Type": "application/json"}, body)
-            text = data["candidates"][0]["content"]["parts"][0]["text"].strip().strip('"')
-            if 8 <= len(text) <= 200:
-                return text
+            text = data["candidates"][0]["content"]["parts"][0]["text"]
+            text = re.sub(r"^```(?:json)?|```$", "", text.strip()).strip()
+            obj = json.loads(text)
+            quote = str(obj.get("quote", "")).strip().strip('"')
+            if not 8 <= len(quote) <= 200:
+                print(f"CONTENT: {model} quote unusable, trying next.")
+                continue
+            hook = str(obj.get("hook", "")).strip()
+            hook = re.sub(r"#\w+", "", hook).strip()
+            tags = [t for t in (clean_tag(x) for x in obj.get("hashtags", [])) if t and t not in BANNED_TAGS]
+            print(f"CONTENT: written by Gemini ({model})")
+            return {
+                "quote": quote,
+                "hook": hook if 3 <= len(hook) <= 140 else "",
+                "tags": tags,
+                "visual": clean_search_word(obj.get("visual", "")),
+            }
         except Exception as exc:  # noqa: BLE001
-            print(f"Gemini failed ({exc}); using built-in quote.")
-    return random.choice(FALLBACK_QUOTES[category])
+            print(f"CONTENT: {model} failed ({exc}), trying next.")
+    print("CONTENT: Gemini unavailable -> built-in quote.")
+    return None
 
 
-def download_background(terms):
-    """Download a Pixabay video. Returns a Path, or None if unavailable (reason is printed)."""
+def build_caption(quote, hook, extra_tags, category):
+    """Quote + hook + call to action + hashtags that all belong together."""
+    core = CATEGORIES[category][1]
+    tags = []
+    for t in extra_tags[:4] + core[:4] + ALWAYS_TAGS:   # quote-specific first, then category
+        if t not in tags:
+            tags.append(t)
+    tags = tags[:MAX_HASHTAGS]
+    cta = random.choice(CTAS).format(h=HANDLE)
+    parts = [quote]
+    if hook:
+        parts.append(hook)
+    parts.append(cta)
+    parts.append(" ".join(tags))
+    caption = "\n\n".join(parts)
+    if len(caption) > MAX_CAPTION_CHARS:
+        caption = caption[:MAX_CAPTION_CHARS].rsplit(" ", 1)[0]
+    return caption, tags
+
+
+# ------------------------------------------------------------- background ----
+def download_background(search_words):
+    """Download a Pixabay video. Returns a Path or None (the reason is printed)."""
     key = (os.environ.get("PIXABAY_API_KEY") or "").strip()
     if not key:
-        print("BACKGROUND: PIXABAY_API_KEY is empty or missing in this run -> gradient used. "
-              "Check the secret name is exactly PIXABAY_API_KEY under Settings > Secrets > Actions.")
+        print("BACKGROUND: PIXABAY_API_KEY empty or missing -> gradient used.")
         return None
-    queries = random.sample(terms, k=min(3, len(terms))) + ["nature", ""]
-    for term in queries:
+    for term in search_words + ["nature", ""]:
         try:
             q = urllib.parse.quote(term)
             url = f"https://pixabay.com/api/videos/?key={key}&q={q}&per_page=30&safesearch=true"
@@ -145,8 +224,7 @@ def download_background(terms):
             print(f"BACKGROUND: search '{term}' -> {len(data.get('hits', []))} hits, {len(hits)} usable")
             if not hits:
                 continue
-            hit = random.choice(hits)
-            vids = hit["videos"]
+            vids = random.choice(hits)["videos"]
             for size in ("medium", "large", "small", "tiny"):
                 link = (vids.get(size) or {}).get("url")
                 if not link:
@@ -164,6 +242,7 @@ def download_background(terms):
     return None
 
 
+# ------------------------------------------------------------------- text ----
 def load_font(size):
     for path in FONT_CANDIDATES:
         if os.path.exists(path):
@@ -180,7 +259,6 @@ def load_font(size):
 
 
 def wrap_to_width(draw, text, font, max_width):
-    """Greedy word-wrap using real pixel widths (not character counts)."""
     lines, current = [], ""
     for word in text.split():
         trial = f"{current} {word}".strip()
@@ -196,19 +274,17 @@ def wrap_to_width(draw, text, font, max_width):
 
 
 def fit_text(draw, text):
-    """Largest font size where the wrapped text fits the safe box. Returns (font, lines, spacing)."""
-    max_w = BOX_RIGHT - BOX_LEFT
-    max_h = BOX_BOTTOM - BOX_TOP
+    """Largest font size where the wrapped text fits the safe box."""
+    max_w, max_h = BOX_RIGHT - BOX_LEFT, BOX_BOTTOM - BOX_TOP
     for size in range(MAX_FONT, MIN_FONT - 1, -2):
         font = load_font(size)
         lines = wrap_to_width(draw, text, font, max_w)
         spacing = int(size * 0.32)
         line_h = font.getbbox("Ag")[3] - font.getbbox("Ag")[1]
         total_h = len(lines) * line_h + (len(lines) - 1) * spacing
-        widest_ok = all(draw.textlength(l, font=font) <= max_w for l in lines)
-        if total_h <= max_h and widest_ok and len(lines) <= 9:
+        if total_h <= max_h and all(draw.textlength(l, font=font) <= max_w for l in lines) and len(lines) <= 9:
             return font, lines, spacing, line_h
-    font = load_font(MIN_FONT)  # last resort
+    font = load_font(MIN_FONT)
     lines = wrap_to_width(draw, text, font, max_w)
     return font, lines, int(MIN_FONT * 0.32), font.getbbox("Ag")[3] - font.getbbox("Ag")[1]
 
@@ -218,25 +294,21 @@ def render_text_png(text, path):
     draw = ImageDraw.Draw(img)
     font, lines, spacing, line_h = fit_text(draw, text)
     total_h = len(lines) * line_h + (len(lines) - 1) * spacing
-    y = BOX_TOP + ((BOX_BOTTOM - BOX_TOP) - total_h) // 2  # vertically centred in the box
+    y = BOX_TOP + ((BOX_BOTTOM - BOX_TOP) - total_h) // 2
     for line in lines:
-        w = draw.textlength(line, font=font)
-        x = (W - w) / 2
-        # soft shadow for readability on any background
+        x = (W - draw.textlength(line, font=font)) / 2
         draw.text((x + 4, y + 5), line, font=font, fill=(0, 0, 0, 170))
         draw.text((x, y), line, font=font, fill=(255, 255, 255, 255))
         y += line_h + spacing
-    # small handle near the bottom (above Instagram's caption area)
     small = load_font(40)
     hw = draw.textlength(HANDLE, font=small)
     draw.text(((W - hw) / 2, 1500), HANDLE, font=small, fill=(255, 255, 255, 200))
     img.save(path)
-    print(f"Text fitted: {len(lines)} lines, font size {font.size}")
+    print(f"TEXT: fitted {len(lines)} lines, font size {font.size}")
 
 
 def reel_duration(text):
-    words = len(text.split())
-    return max(8, min(15, round(5 + words * 0.4)))
+    return max(8, min(15, round(5 + len(text.split()) * 0.4)))
 
 
 def build_video(bg, text_png, duration, out_path):
@@ -251,7 +323,7 @@ def build_video(bg, text_png, duration, out_path):
                     f":speed=0.015:d={duration}"]
         base = "[0:v]fps=30,setsar=1[bg]"
     cmd = [
-        "ffmpeg", "-y", *bg_input,
+        "ffmpeg", "-y", "-loglevel", "error", *bg_input,
         "-loop", "1", "-i", str(text_png),
         "-filter_complex",
         f"{base};[1:v]{fade_in}[txt];[bg][txt]overlay=0:0:format=auto,format=yuv420p[v]",
@@ -267,13 +339,21 @@ def main():
     TMP_DIR.mkdir(parents=True, exist_ok=True)
 
     category = random.choice(list(CATEGORIES))
-    terms, tags = CATEGORIES[category]
-    quote = pick_quote(category)
-    print(f"Category: {category}\nQuote: {quote}")
+    search_words, _core = CATEGORIES[category]
+    content = ask_gemini(category)
+    if content:
+        quote, hook, extra_tags, visual = content["quote"], content["hook"], content["tags"], content["visual"]
+    else:
+        quote, hook, extra_tags, visual = random.choice(FALLBACK_QUOTES[category]), "", [], None
+    print(f"CATEGORY: {category}\nQUOTE: {quote}")
+
+    caption, tags = build_caption(quote, hook, extra_tags, category)
+    print("TAGS:", " ".join(tags))
 
     text_png = TMP_DIR / "text.png"
     render_text_png(quote, text_png)
 
+    terms = ([visual] if visual else []) + random.sample(search_words, k=min(3, len(search_words)))
     bg = download_background(terms)
     duration = reel_duration(quote)
     out_mp4 = OUT_DIR / "reel.mp4"
@@ -283,13 +363,14 @@ def main():
     meta = {
         "category": category,
         "quote": quote,
-        "caption": f"{quote}\n\nSave this for later and follow {HANDLE} for daily reminders.\n\n{tags} #reels #quotes",
+        "caption": caption,
+        "hashtags": tags,
         "video_url": f"{REPO_RAW}/reels/out/reel.mp4?v={stamp}",
         "duration_seconds": duration,
         "generated_at": stamp,
     }
     (OUT_DIR / "reel.json").write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
-    print("Done:", out_mp4, f"({out_mp4.stat().st_size / 1e6:.1f} MB)")
+    print("DONE:", out_mp4, f"({out_mp4.stat().st_size / 1e6:.1f} MB)")
 
 
 if __name__ == "__main__":
