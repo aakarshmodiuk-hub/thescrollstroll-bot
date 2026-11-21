@@ -1,0 +1,46 @@
+name: Generate Reel
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"   # every 6 hours (UTC) - change later if you want
+  workflow_dispatch:          # lets you press "Run workflow" manually
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reel-lane
+  cancel-in-progress: false
+
+jobs:
+  reel:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install tools (FFmpeg, font, Pillow)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg fonts-montserrat
+          pip install pillow
+
+      - name: Make the Reel
+        env:
+          PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python reels/make_reel.py
+
+      - name: Save Reel to repo
+        run: |
+          git config user.name "reel-bot"
+          git config user.email "reel-bot@users.noreply.github.com"
+          git add reels/out/reel.mp4 reels/out/reel.json
+          git commit -m "New reel $(date -u +'%Y-%m-%d %H:%M')" || echo "Nothing to commit"
+          git pull --rebase origin main
+          git push origin main
