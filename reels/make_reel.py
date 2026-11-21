@@ -2,11 +2,11 @@
 
 Makes a vertical (1080x1920) Reel with an auto-fitted quote and writes:
   reels/out/reel.mp4   the video
-  reels/out/reel.json  caption + hashtags + video url (read by Make)
+  reels/out/reel.json  caption + hashtags + video url + audio mood (read by Make)
 
-Quote, caption hook, hashtags and background search word are all written TOGETHER
-for the same idea, so they always match each other. Without Gemini the built-in
-quotes + that category's hashtags are used (still matched).
+Quote, caption hook, hashtags, background search word and audio mood are all
+written TOGETHER for the same idea, so they always match each other.
+Without Gemini the built-in quotes + that category's hashtags are used.
 
 Secrets (optional - the script still works with none):
   PIXABAY_API_KEY  -> real video backgrounds
@@ -47,28 +47,46 @@ FONT_CANDIDATES = [
 ]
 
 GEMINI_MODELS = ["gemini-3.1-flash-lite", "gemini-3.5-flash-lite", "gemini-3.8-flash"]
-MAX_HASHTAGS = 10          # Instagram allows 30; fewer, relevant ones work better
-MAX_CAPTION_CHARS = 2000   # Instagram limit is 2200
+MAX_HASHTAGS = 6
+MAX_CAPTION_CHARS = 2000
+
+AUDIO_TAGS = [
+    "lofi-chill",
+    "late-night-ambient",
+    "quirky-upbeat",
+    "soft-piano",
+    "rain-focus",
+    "warm-acoustic",
+    "peaceful-horizon",
+]
+
+AUDIO_TAG_FALLBACK = {
+    "inspiration": "peaceful-horizon",
+    "professional life": "rain-focus",
+    "personal life": "soft-piano",
+    "relationships": "warm-acoustic",
+    "discipline and habits": "lofi-chill",
+    "money and mindset": "late-night-ambient",
+}
 
 # category -> (Pixabay search words, core hashtags that always fit the category)
 CATEGORIES = {
     "inspiration": (["sunrise", "mountain clouds", "ocean waves", "forest light"],
-                    ["#motivation", "#inspiration", "#mindset", "#growth", "#positivethinking"]),
+                    ["#selfgrowth", "#innerpeace", "#mindset", "#growth", "#lifelessons"]),
     "professional life": (["city skyline", "office window", "city night", "laptop work"],
-                          ["#careergrowth", "#worklife", "#leadership", "#success", "#careeradvice"]),
+                          ["#worklife", "#burnoutrecovery", "#careeradvice", "#mentalclarity", "#workbalance"]),
     "personal life": (["rain window", "sunset", "walking path", "coffee morning"],
                       ["#selfgrowth", "#lifelessons", "#mentalclarity", "#selfcare", "#innerpeace"]),
     "relationships": (["sunset beach", "city lights", "autumn leaves", "starry sky"],
-                      ["#relationships", "#friendship", "#connection", "#lifequotes", "#kindness"]),
+                      ["#relationships", "#friendship", "#connection", "#selfrespect", "#emotionalwellbeing"]),
     "discipline and habits": (["running track", "sunrise gym", "clock time", "road"],
                               ["#discipline", "#habits", "#consistency", "#selfimprovement", "#focus"]),
     "money and mindset": (["city traffic", "skyscrapers", "rain city", "city night"],
-                          ["#moneymindset", "#financialfreedom", "#wealth", "#growthmindset", "#abundance"]),
+                          ["#moneymindset", "#financialfreedom", "#wealth", "#growthmindset", "#moneyhabits"]),
 }
 ALWAYS_TAGS = ["#quotes", "#reels"]
-# spammy tags that hurt reach and do not describe the content
 BANNED_TAGS = {"#fyp", "#foryou", "#foryoupage", "#viral", "#explore", "#trending", "#follow",
-               "#followme", "#like4like", "#instagood", "#love", "#instagram"}
+               "#followme", "#like4like", "#instagood", "#love", "#instagram", "#motivation"}
 
 CTAS = [
     "Save this for later and follow {h} for daily reminders.",
@@ -77,43 +95,42 @@ CTAS = [
     "Tag a friend who needs this. More daily on {h}.",
 ]
 
-# Original lines (no famous quotes, so no attribution/copyright worries)
 FALLBACK_QUOTES = {
     "inspiration": [
-        "You don't need a perfect start. You need a start.",
-        "Small steps still leave footprints. Keep walking.",
-        "The version of you that you're waiting to become is built by what you do today.",
-        "Doubt is loud, but action is louder. Move anyway.",
+        "you don't need a perfect start. you need a start.",
+        "small steps still leave footprints. keep walking.",
+        "the version of you that you're waiting to become is built by what you do today.",
+        "doubt is loud, but action is louder. move anyway.",
     ],
     "professional life": [
-        "Your career is a long game. Stop panicking over one slow quarter.",
-        "Be the person who makes the team calmer, not louder.",
-        "Skills pay rent. Show up, learn something, repeat.",
-        "A good reputation is built in the moments nobody is clapping.",
+        "your career is a long game. stop panicking over one slow quarter.",
+        "be the person who makes the team calmer, not louder.",
+        "skills pay rent. show up, learn something, repeat.",
+        "a good reputation is built in the moments nobody is clapping.",
     ],
     "personal life": [
-        "Rest is not a reward. It's part of the work.",
-        "You're allowed to outgrow places that once felt like home.",
-        "Peace is a decision you keep making, not a place you arrive at.",
-        "Protect your quiet mornings. They shape the whole day.",
+        "rest is not a reward. it's part of the work.",
+        "you're allowed to outgrow places that once felt like home.",
+        "peace is a decision you keep making, not a place you arrive at.",
+        "protect your quiet mornings. they shape the whole day.",
     ],
     "relationships": [
-        "The right people never make you audition for their love.",
-        "Real friends check in even when you seem fine.",
-        "Be gentle with people. Everyone is carrying something you can't see.",
-        "Distance shows who was reaching and who was just nearby.",
+        "the right people never make you audition for their love.",
+        "real friends check in even when you seem fine.",
+        "be gentle with people. everyone is carrying something you can't see.",
+        "distance shows who was reaching and who was just nearby.",
     ],
     "discipline and habits": [
-        "Motivation starts the engine. Habits drive the car.",
-        "You don't rise to your goals. You fall to your routine.",
-        "Do it tired. Do it bored. Do it anyway.",
-        "Consistency is boring until the results show up.",
+        "motivation starts the engine. habits drive the car.",
+        "you don't rise to your goals. you fall to your routine.",
+        "do it tired. do it bored. do it anyway.",
+        "consistency is boring until the results show up.",
     ],
     "money and mindset": [
-        "Spend like your future self is watching, because they are.",
-        "Income opens doors. Habits decide what you do inside.",
-        "Wealth is mostly patience wearing a good disguise.",
-        "Don't buy it to impress people who aren't even paying attention.",
+        "spend like your future self is watching, because they are.",
+        "income opens doors. habits decide what you do inside.",
+        "wealth is mostly patience wearing a good disguise.",
+        "don't buy it to impress people who aren't even paying attention.",
     ],
 }
 
@@ -124,9 +141,7 @@ def http_get_json(url, headers=None, data=None, timeout=30):
         return json.loads(r.read().decode("utf-8"))
 
 
-# ---------------------------------------------------------------- content ----
 def clean_tag(tag):
-    """'#Self Growth!' -> '#selfgrowth' (letters/digits only, lowercase, 3-30 chars) or None."""
     body = re.sub(r"[^a-z0-9]", "", str(tag).lower().lstrip("#"))
     return f"#{body}" if 3 <= len(body) <= 30 else None
 
@@ -137,7 +152,6 @@ def clean_search_word(text):
 
 
 def call_with_retry(url, body, attempts=2, timeout=60):
-    """Retry on timeouts and server errors (5xx); a 404/400 fails straight away."""
     import urllib.error
     last = None
     for n in range(1, attempts + 1):
@@ -147,7 +161,7 @@ def call_with_retry(url, body, attempts=2, timeout=60):
             if exc.code < 500 and exc.code != 429:
                 raise
             last = exc
-        except Exception as exc:  # noqa: BLE001  (timeouts, connection resets)
+        except Exception as exc:
             last = exc
         print(f"CONTENT: attempt {n}/{attempts} failed ({last})")
         time.sleep(3)
@@ -155,22 +169,25 @@ def call_with_retry(url, body, attempts=2, timeout=60):
 
 
 def ask_gemini(category):
-    """One call returns quote + hook + hashtags + visual together, so they match each other."""
     key = (os.environ.get("GEMINI_API_KEY") or "").strip()
     if not key:
         print("CONTENT: GEMINI_API_KEY missing -> built-in quote.")
         return None
     prompt = (
-        f"You write Instagram Reel content for the page {HANDLE}. Topic: {category}.\n"
-        "Return ONLY a JSON object with these keys:\n"
-        '  "quote": one original, punchy, relatable quote, max 22 words, no author, '
-        "no emojis, no quotation marks;\n"
-        '  "hook": one short caption line (max 14 words) that reacts to THIS quote, '
-        "no hashtags;\n"
-        '  "hashtags": 4 to 6 lowercase hashtags specific to THIS quote\'s idea '
-        "(not generic spam like #fyp or #viral);\n"
-        '  "visual": 1 or 2 plain words describing a calm background video that fits the '
-        'mood of the quote (for example "sunrise", "city night", "ocean").'
+        "You write sharp, relatable, and quietly inspiring Instagram Reel content for @TheScrollStroll.\n"
+        "Target audience: self-aware Gen Z, tired corporate professionals, and overthinking uni students.\n"
+        "Tone: a smart blend of relatable dry wit, grounded self-motivation, gentle inspiration, and inner peace—like a wise, funny friend texting you during a quiet coffee break, NOT a loud hustle-bro coach or cheesy motivational poster.\n"
+        f"Topic: {category}.\n\n"
+        "Rules:\n"
+        "- Avoid clichés (no 'rise and grind', 'hustle harder', 'good vibes only', or robotic self-help jargon).\n"
+        "- Balance observational humor (unread emails, overthinking, burnout, small wins) with calming perspective, self-belief, and slow-living peace.\n"
+        "- Keep it honest, human, and emotionally resonant without sounding preachy.\n\n"
+        "Return ONLY a valid JSON object with these exact keys:\n\n"
+        '"quote": one original, punchy, memorable quote (max 22 words) that sparks either a relatable smirk, quiet motivation, or a deep breath of peace. Lowercase aesthetic preferred except for "I" and proper nouns. No author, no emojis, no quotation marks;\n\n'
+        '"hook": one short, conversational caption line (max 14 words) that reacts to or deepens THIS quote with warmth, wit, or a gentle reflection. No hashtags;\n\n'
+        '"hashtags": 4 to 6 lowercase hashtags specific to THIS quote\'s exact theme and mood (no generic spam like #fyp, #viral, #motivation);\n\n'
+        '"visual": 1 or 2 plain words describing a calm, aesthetic Pixabay background video that fits the mood (for example "sunrise ocean", "rain window", "city night", "misty mountains", "coffee steam");\n\n'
+        '"audio_tag": choose ONE exact tag from this list that best matches the quote\'s mood: ["lofi-chill", "late-night-ambient", "quirky-upbeat", "soft-piano", "rain-focus", "warm-acoustic", "peaceful-horizon"].'
     )
     body = json.dumps({
         "contents": [{"parts": [{"text": prompt}]}],
@@ -191,24 +208,27 @@ def ask_gemini(category):
             hook = str(obj.get("hook", "")).strip()
             hook = re.sub(r"#\w+", "", hook).strip()
             tags = [t for t in (clean_tag(x) for x in obj.get("hashtags", [])) if t and t not in BANNED_TAGS]
+            audio_tag = str(obj.get("audio_tag", "")).strip().lower()
+            if audio_tag not in AUDIO_TAGS:
+                audio_tag = AUDIO_TAG_FALLBACK[category]
             print(f"CONTENT: written by Gemini ({model})")
             return {
                 "quote": quote,
                 "hook": hook if 3 <= len(hook) <= 140 else "",
                 "tags": tags,
                 "visual": clean_search_word(obj.get("visual", "")),
+                "audio_tag": audio_tag,
             }
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             print(f"CONTENT: {model} failed ({exc}), trying next.")
     print("CONTENT: Gemini unavailable -> built-in quote.")
     return None
 
 
 def build_caption(quote, hook, extra_tags, category):
-    """Quote + hook + call to action + hashtags that all belong together."""
     core = CATEGORIES[category][1]
     tags = []
-    for t in extra_tags[:4] + core[:4] + ALWAYS_TAGS:   # quote-specific first, then category
+    for t in extra_tags[:MAX_HASHTAGS] + core + ALWAYS_TAGS:
         if t not in tags:
             tags.append(t)
     tags = tags[:MAX_HASHTAGS]
@@ -224,9 +244,7 @@ def build_caption(quote, hook, extra_tags, category):
     return caption, tags
 
 
-# ------------------------------------------------------------- background ----
 def download_background(search_words):
-    """Download a Pixabay video. Returns a Path or None (the reason is printed)."""
     key = (os.environ.get("PIXABAY_API_KEY") or "").strip()
     if not key:
         print("BACKGROUND: PIXABAY_API_KEY empty or missing -> gradient used.")
@@ -254,21 +272,20 @@ def download_background(search_words):
                 if dest.stat().st_size > 50_000:
                     print(f"BACKGROUND: using Pixabay video ({size}, {dest.stat().st_size / 1e6:.1f} MB)")
                     return dest
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             print(f"BACKGROUND: search '{term}' failed: {exc}")
     print("BACKGROUND: all Pixabay attempts failed -> gradient used.")
     return None
 
 
-# ------------------------------------------------------------------- text ----
 def load_font(size):
     for path in FONT_CANDIDATES:
         if os.path.exists(path):
             try:
                 font = ImageFont.truetype(path, size)
                 try:
-                    font.set_variation_by_name("Bold")  # variable-font builds only
-                except Exception:  # noqa: BLE001
+                    font.set_variation_by_name("Bold")
+                except Exception:
                     pass
                 return font
             except OSError:
@@ -292,7 +309,6 @@ def wrap_to_width(draw, text, font, max_width):
 
 
 def fit_text(draw, text):
-    """Largest font size where the wrapped text fits the safe box."""
     max_w, max_h = BOX_RIGHT - BOX_LEFT, BOX_BOTTOM - BOX_TOP
     for size in range(MAX_FONT, MIN_FONT - 1, -2):
         font = load_font(size)
@@ -360,10 +376,20 @@ def main():
     search_words, _core = CATEGORIES[category]
     content = ask_gemini(category)
     if content:
-        quote, hook, extra_tags, visual = content["quote"], content["hook"], content["tags"], content["visual"]
+        quote = content["quote"]
+        hook = content["hook"]
+        extra_tags = content["tags"]
+        visual = content["visual"]
+        audio_tag = content["audio_tag"]
     else:
-        quote, hook, extra_tags, visual = random.choice(FALLBACK_QUOTES[category]), "", [], None
+        quote = random.choice(FALLBACK_QUOTES[category])
+        hook = ""
+        extra_tags = []
+        visual = None
+        audio_tag = AUDIO_TAG_FALLBACK[category]
+
     print(f"CATEGORY: {category}\nQUOTE: {quote}")
+    print(f"AUDIO TAG: {audio_tag}")
 
     caption, tags = build_caption(quote, hook, extra_tags, category)
     print("TAGS:", " ".join(tags))
@@ -383,6 +409,7 @@ def main():
         "quote": quote,
         "caption": caption,
         "hashtags": tags,
+        "audio_tag": audio_tag,
         "video_url": f"{REPO_RAW}/reels/out/reel.mp4?v={stamp}",
         "duration_seconds": duration,
         "generated_at": stamp,
