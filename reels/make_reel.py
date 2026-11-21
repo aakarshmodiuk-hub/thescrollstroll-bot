@@ -151,19 +151,30 @@ def ask_gemini(category):
         print("CONTENT: GEMINI_API_KEY missing -> built-in quote.")
         return None
     prompt = (
-        "You write sharp, relatable, and quietly inspiring Instagram Reel content for @TheScrollStroll.\n"
-        "Target audience: self-aware Gen Z, tired corporate professionals, and overthinking uni students.\n"
-        "Tone: a smart blend of relatable dry wit, grounded self-motivation, gentle inspiration, and inner peace—like a wise, funny friend texting you during a quiet coffee break, NOT a loud hustle-bro coach or cheesy motivational poster.\n"
+        "You write one original Instagram Reel quote for @TheScrollStroll.\n"
+        "The account is for quietly overwhelmed achievers: smart, self-aware people who want to improve their life without becoming loud, performative, or obsessed with productivity.\n"
+        "Write like a calm, perceptive friend: grounded, emotionally intelligent, lightly witty, and specific. Avoid generic self-help language and motivational-poster energy.\n\n"
         f"Topic: {category}.\n\n"
+        "Before writing, silently choose ONE distinct creative angle from this list:\n"
+        "- a small everyday truth\n"
+        "- a gentle reality check\n"
+        "- a permission slip\n"
+        "- a quiet boundary\n"
+        "- a reframed habit\n"
+        "- an emotionally honest observation\n"
+        "- a hopeful but realistic thought\n"
+        "- a dry, relatable insight\n\n"
+        "Do not mention the angle. Make the quote feel fresh, human, and specific rather than like a recycled motivational quote.\n\n"
         "Rules:\n"
-        "- Avoid clichés (no 'rise and grind', 'hustle harder', 'good vibes only', or robotic self-help jargon).\n"
-        "- Balance observational humor (unread emails, overthinking, burnout, small wins) with calming perspective, self-belief, and slow-living peace.\n"
-        "- Keep it honest, human, and emotionally resonant without sounding preachy.\n\n"
+        "- Do not use these phrases: 'rise and grind', 'hustle harder', 'good vibes only', 'you got this', 'believe in yourself', 'never give up', or 'your future self'.\n"
+        "- No emojis, no author attribution, no quotation marks, no hashtags in the quote.\n"
+        "- Prefer lowercase except for 'I' and proper nouns.\n"
+        "- Make the quote feel readable and punchy on a vertical Reel.\n\n"
         "Return ONLY a valid JSON object with these exact keys:\n\n"
-        '"quote": one original, punchy, memorable quote (max 22 words) that sparks either a relatable smirk, quiet motivation, or a deep breath of peace. Lowercase aesthetic preferred except for "I" and proper nouns. No author, no emojis, no quotation marks;\n\n'
-        '"hook": one short, conversational caption line (max 14 words) that reacts to or deepens THIS quote with warmth, wit, or a gentle reflection. No hashtags;\n\n'
-        '"hashtags": 4 to 6 lowercase hashtags specific to THIS quote\'s exact theme and mood (no generic spam like #fyp, #viral, #motivation);\n\n'
-        '"visual": 1 or 2 plain words describing a calm, aesthetic Pixabay background video that fits the mood (for example "sunrise ocean", "rain window", "city night", "misty mountains", "coffee steam");\n\n'
+        '"quote": one original quote, maximum 22 words, that creates a relatable smirk, quiet motivation, or a deep breath of peace;\n\n'
+        '"hook": one short conversational caption line, maximum 14 words, that reacts to or deepens this exact quote with warmth, wit, or gentle reflection. No hashtags;\n\n'
+        '"hashtags": 4 to 6 lowercase hashtags specific to this quote\'s exact theme and mood. Do not use generic spam tags such as #fyp, #viral, or #motivation;\n\n'
+        '"visual": 1 or 2 plain words describing a calm, aesthetic Pixabay background video that fits the mood, for example "sunrise ocean", "rain window", "city night", "misty mountains", or "coffee steam";\n\n'
         '"audio_tag": choose ONE exact tag from this list that best matches the quote\'s mood: ["lofi-chill", "late-night-ambient", "quirky-upbeat", "soft-piano", "rain-focus", "warm-acoustic", "peaceful-horizon"].'
     )
     body = json.dumps({
