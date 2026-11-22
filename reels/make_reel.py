@@ -54,7 +54,7 @@ CATEGORIES = {
                     ["#selfgrowth", "#innerpeace", "#mindset", "#growth", "#lifelessons"]),
     "professional life": (["city skyline", "office window", "city night", "laptop work"],
                           ["#worklife", "#burnoutrecovery", "#careeradvice", "#mentalclarity", "#workbalance"]),
-    "personal life": (["rain window", "sunset", "walking path", "coffee morning"],
+    "personal life": (["rain window", "sunset", "walking path", "quiet street"],
                       ["#selfgrowth", "#lifelessons", "#mentalclarity", "#selfcare", "#innerpeace"]),
     "relationships": (["sunset beach", "city lights", "autumn leaves", "starry sky"],
                       ["#relationships", "#friendship", "#connection", "#selfrespect", "#emotionalwellbeing"]),
@@ -63,6 +63,25 @@ CATEGORIES = {
     "money and mindset": (["city traffic", "skyscrapers", "rain city", "city night"],
                           ["#moneymindset", "#financialfreedom", "#wealth", "#growthmindset", "#moneyhabits"]),
 }
+# Audio is chosen here (not by Gemini) so the music varies. Tags are fixed.
+AUDIO_BY_CATEGORY = {
+    "inspiration": ["peaceful-horizon", "soft-piano", "quirky-upbeat"],
+    "professional life": ["rain-focus", "late-night-ambient", "quirky-upbeat"],
+    "personal life": ["soft-piano", "warm-acoustic", "lofi-chill"],
+    "relationships": ["warm-acoustic", "soft-piano", "peaceful-horizon"],
+    "discipline and habits": ["quirky-upbeat", "lofi-chill", "rain-focus"],
+    "money and mindset": ["late-night-ambient", "rain-focus", "lofi-chill"],
+}
+TAG_MOODS = {
+    "lofi-chill": "relaxed, easy, everyday calm",
+    "late-night-ambient": "deep, reflective, nighttime",
+    "quirky-upbeat": "light, playful, a little witty",
+    "soft-piano": "tender, emotional, gentle",
+    "rain-focus": "steady, focused, contemplative",
+    "warm-acoustic": "warm, human, comforting",
+    "peaceful-horizon": "hopeful, open, uplifting",
+}
+BANNED_VISUAL_WORDS = {"coffee", "cafe", "cup", "mug", "tea", "latte", "espresso", "cappuccino"}
 ALWAYS_TAGS = ["#quotes", "#reels"]
 BANNED_TAGS = {"#fyp", "#foryou", "#foryoupage", "#viral", "#explore", "#trending", "#follow",
                "#followme", "#like4like", "#instagood", "#love", "#instagram", "#motivation"}
@@ -125,7 +144,9 @@ def clean_tag(tag):
 
 def clean_search_word(text):
     words = re.sub(r"[^a-zA-Z ]", " ", str(text)).split()
-    return " ".join(words[:2]).lower() if words else None
+    if not words or any(w.lower() in BANNED_VISUAL_WORDS for w in words):
+        return None
+    return " ".join(words[:2]).lower()
 
 
 def call_with_retry(url, body, attempts=2, timeout=60):
@@ -150,6 +171,8 @@ def ask_gemini(category):
     if not key:
         print("CONTENT: GEMINI_API_KEY missing -> built-in quote.")
         return None
+    audio_options = AUDIO_BY_CATEGORY[category]
+    audio_help = "; ".join(f"{t} = {TAG_MOODS[t]}" for t in audio_options)
     prompt = (
         "You write one original Instagram Reel quote for @TheScrollStroll.\n"
         "The account is for quietly overwhelmed achievers: smart, self-aware people who want to improve their life without becoming loud, performative, or obsessed with productivity.\n"
@@ -174,8 +197,8 @@ def ask_gemini(category):
         '"quote": one original quote, maximum 22 words, that creates a relatable smirk, quiet motivation, or a deep breath of peace;\n\n'
         '"hook": one short conversational caption line, maximum 14 words, that reacts to or deepens this exact quote with warmth, wit, or gentle reflection. No hashtags;\n\n'
         '"hashtags": 4 to 6 lowercase hashtags specific to this quote\'s exact theme and mood. Do not use generic spam tags such as #fyp, #viral, or #motivation;\n\n'
-        '"visual": 1 or 2 plain words describing a calm, aesthetic Pixabay background video that fits the mood, for example "sunrise ocean", "rain window", "city night", "misty mountains", or "coffee steam";\n\n'
-        '"audio_tag": choose ONE exact tag from this list that best matches the quote\'s mood: ["lofi-chill", "late-night-ambient", "quirky-upbeat", "soft-piano", "rain-focus", "warm-acoustic", "peaceful-horizon"].'
+        '"visual": 1 or 2 plain words for a calm, aesthetic background video that fits the mood. Vary widely: nature, water, sky, weather, mountains, cities, roads, travel, seasons. Never coffee, cafes, cups or tea.\n\n'
+        f'"audio_tag": choose ONE exact tag from {json.dumps(audio_options)} that best fits this quote\'s mood. Meanings: {audio_help}.'
     )
     body = json.dumps({
         "contents": [{"parts": [{"text": prompt}]}],
@@ -197,8 +220,8 @@ def ask_gemini(category):
             hook = re.sub(r"#\w+", "", hook).strip()
             tags = [t for t in (clean_tag(x) for x in obj.get("hashtags", [])) if t and t not in BANNED_TAGS]
             audio_tag = str(obj.get("audio_tag", "")).strip().lower()
-            if audio_tag not in AUDIO_TAGS:
-                audio_tag = AUDIO_TAG_FALLBACK[category]
+            if audio_tag not in audio_options:
+                audio_tag = None
             print(f"CONTENT: written by Gemini ({model})")
             return {
                 "quote": quote,
@@ -356,6 +379,20 @@ def build_video(bg, text_png, duration, out_path):
     subprocess.run(cmd, check=True)
 
 
+def pick_audio_tag(category, suggested=None):
+    """Use Gemini's suggestion (already limited to the category's tags),
+    unless it repeats the previous Reel's tag; then pick another."""
+    options = AUDIO_BY_CATEGORY.get(category) or AUDIO_TAGS
+    try:
+        last = json.loads((OUT_DIR / "reel.json").read_text(encoding="utf-8")).get("audio_tag")
+    except Exception:
+        last = None
+    if suggested in options and suggested != last:
+        return suggested
+    fresh = [t for t in options if t != last]
+    return random.choice(fresh or options)
+
+
 def main():
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     TMP_DIR.mkdir(parents=True, exist_ok=True)
@@ -367,13 +404,14 @@ def main():
         hook = content["hook"]
         extra_tags = content["tags"]
         visual = content["visual"]
-        audio_tag = content["audio_tag"]
+        suggested_audio = content["audio_tag"]
     else:
         quote = random.choice(FALLBACK_QUOTES[category])
         hook = ""
         extra_tags = []
         visual = None
-        audio_tag = AUDIO_TAG_FALLBACK[category]
+        suggested_audio = None
+    audio_tag = pick_audio_tag(category, suggested_audio)
     print(f"CATEGORY: {category}\nQUOTE: {quote}")
     print(f"AUDIO TAG: {audio_tag}")
     caption, tags = build_caption(quote, hook, extra_tags, category)
