@@ -406,10 +406,10 @@ def mix_music(voice, total, track, out_path):
     voice_in = ["-i", str(voice)] if voice else ["-f", "lavfi", "-t", f"{total:.2f}", "-i", "anullsrc=r=44100:cl=mono"]
     fade_out_at = max(0.0, total - 1.5)
     graph = (
-        f"[1:a]atrim=0:{total:.2f},asetpts=PTS-STARTPTS,loudnorm=I=-28:TP=-3:LRA=7,"
+        f"[1:a]atrim=0:{total:.2f},asetpts=PTS-STARTPTS,loudnorm=I=-21:TP=-3:LRA=7,"
         f"afade=t=in:st=0:d=0.8,afade=t=out:st={fade_out_at:.2f}:d=1.5,aformat=sample_rates=44100:channel_layouts=mono[m];"
         f"[0:a]apad=whole_dur={total:.2f},aformat=sample_rates=44100:channel_layouts=mono,asplit[v][sc];"
-        "[m][sc]sidechaincompress=threshold=0.02:ratio=10:attack=15:release=350[duck];"
+        "[m][sc]sidechaincompress=threshold=0.05:ratio=3:attack=20:release=500[duck];"
         "[v][duck]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95[a]"
     )
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", *voice_in,
