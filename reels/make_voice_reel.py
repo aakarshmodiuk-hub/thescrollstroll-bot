@@ -60,9 +60,19 @@ SERIES = [
     "Things nobody tells you about adulthood",
     "Relatable thoughts at 2am",
     "Signs you're officially an adult now",
-    "Small things that hit different as an adult",
-    "POV: you're an adult and nobody warned you",
-    "Tiny adult moments we all pretend are normal",
+    "Things only people who cook at home understand",
+    "Signs you've been on your phone too long",
+    "Monday morning, explained",
+    "The group chat knows exactly what I mean",
+    "Small things that make a day better",
+    "Pets are basically tiny roommates",
+    "Things we all do when nobody is watching",
+    "Shopping with a plan vs shopping for real",
+    "Sunday night feelings, explained",
+    "Meetings that could have been an email",
+    "Things every office has, whether you like it or not",
+    "Signs you're the work friend everyone relies on",
+    "Work-from-home habits nobody admits to",
 ]
 
 # Fallback only: words to look for in track file names, per series
@@ -70,12 +80,22 @@ SERIES_MOOD_HINTS = {
     SERIES[0]: ["soft", "piano", "warm", "acoustic"],
     SERIES[1]: ["night", "ambient", "rain", "lofi"],
     SERIES[2]: ["quirky", "upbeat", "acoustic", "warm"],
-    SERIES[3]: ["lofi", "chill", "soft", "warm"],
-    SERIES[4]: ["quirky", "upbeat", "chill"],
-    SERIES[5]: ["lofi", "chill", "peaceful", "rain"],
+    SERIES[3]: ["warm", "acoustic", "soft"],
+    SERIES[4]: ["lofi", "chill", "focus"],
+    SERIES[5]: ["upbeat", "quirky", "chill"],
+    SERIES[6]: ["quirky", "upbeat"],
+    SERIES[7]: ["warm", "acoustic", "soft", "upbeat"],
+    SERIES[8]: ["quirky", "upbeat", "warm"],
+    SERIES[9]: ["quirky", "lofi", "chill"],
+    SERIES[10]: ["upbeat", "quirky"],
+    SERIES[11]: ["lofi", "chill", "peaceful", "rain"],
+    SERIES[12]: ["quirky", "upbeat"],
+    SERIES[13]: ["quirky", "upbeat", "chill"],
+    SERIES[14]: ["warm", "acoustic", "upbeat"],
+    SERIES[15]: ["lofi", "chill", "quirky"],
 }
 
-CORE_TAGS = ["#relatable", "#adulting", "#everydaylife", "#lifeofanadult", "#dailythoughts"]
+CORE_TAGS = ["#relatable", "#everydaylife", "#dailythoughts", "#relatablecontent", "#realtalk"]
 BANNED_TAGS = {"#fyp", "#foryou", "#foryoupage", "#viral", "#explore", "#trending", "#follow",
                "#followme", "#like4like", "#instagood", "#love", "#instagram"}
 MAX_HASHTAGS = 10
@@ -104,12 +124,41 @@ FALLBACK_SCRIPTS = [
                "Whether you left the oven on."],
      "payoff": "Sleep is a suggestion your mind keeps declining.",
      "comment": "What keeps you up?", "tags": ["#overthinking"], "visual": "night city"},
-    {"series": SERIES[3], "hook": "Remember when weekends meant plans?",
+    {"series": SERIES[11], "hook": "Remember when weekends meant plans?",
      "lines": ["Now it's a nap and zero obligations.",
                "Cancelled plans feel like winning the lottery.",
                "Your bed is the best place you'll ever go."],
      "payoff": "Growing up is just getting really good at staying in.",
      "comment": "Be honest, who agrees?", "tags": ["#introvert"], "visual": "cozy room"},
+    {"series": SERIES[3], "hook": "If you cook at home, you already know this feeling.",
+     "lines": ["You bought fresh herbs and used one leaf.",
+               "The recipe said 'quick' and lied.",
+               "Leftovers were always the plan."],
+     "payoff": "Dinner is just a small daily win we all quietly chase.",
+     "comment": "What do you always overcook?", "tags": ["#homecooking"], "visual": "kitchen"},
+    {"series": SERIES[5], "hook": "Monday mornings have their own special kind of sadness.",
+     "lines": ["The alarm goes off and negotiates for five more minutes.",
+               "Coffee becomes your whole personality.",
+               "By lunch, the weekend feels like a rumour."],
+     "payoff": "Somehow we all get through it together.",
+     "comment": "Be honest, how's your Monday going?", "tags": ["#mondayvibes"], "visual": "city walk"},
+    {"series": SERIES[8], "hook": "Your pet has definitely decided who's in charge.",
+     "lines": ["They wait by the door like you're late from work.",
+               "They sleep on your laptop when you need it most.",
+               "They look hurt when you leave for ten minutes."],
+     "payoff": "Honestly, they run the household and we just pay the bills.",
+     "comment": "Who runs your home?", "tags": ["#petlife"], "visual": "cozy room"},    {"series": SERIES[12], "hook": "Some meetings could have been one sentence.",
+     "lines": ["Twenty slides to say we need more time.",
+               "Someone says 'quick sync' and it lasts an hour.",
+               "Everyone nods, nobody turns their camera on."],
+     "payoff": "Honestly, the best part is the email that follows.",
+     "comment": "Which meeting ruined your afternoon?", "tags": ["#worklife"], "visual": "laptop desk"},
+    {"series": SERIES[14], "hook": "Every office has one person who knows where everything is.",
+     "lines": ["Nobody remembers when they started doing it.",
+               "They get asked for the password, the printer fix and the birthday cake.",
+               "And they still answer with a smile."],
+     "payoff": "Give that person a coffee today, they've earned it.",
+     "comment": "Who's your office hero?", "tags": ["#officelife"], "visual": "office window"},
 ]
 
 
@@ -188,8 +237,10 @@ def ask_gemini_script(series, recent_hooks, track_names):
     prompt = (
         f"You write 20-second Instagram Reel scripts for the page {HANDLE}.\n"
         f'Series title (shown on screen): "{series}".\n'
-        "Audience: people aged 20-40. Topic: relatable everyday life (work, money, friends, "
-        "sleep, phones, mornings, adulting). Tone: spoken, conversational, funny-because-true, "
+        "Audience: 18-40 year olds. Topic: relatable everyday life (food, phones, friends, family, "
+        "pets, shopping, commuting, weekends, sleep, office and work life, small daily moments). "
+        "Work jokes must be funny and specific (meetings, emails, colleagues, video calls), never "
+        "preachy or motivational. Tone: spoken, conversational, funny-because-true, "
         "a little self-deprecating, never preachy. Use contractions. No emojis.\n"
         "Return ONLY a JSON object with these keys:\n"
         '  "hook": one scroll-stopping opening line, max 12 words, speaks directly to "you";\n'
