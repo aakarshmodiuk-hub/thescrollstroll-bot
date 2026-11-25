@@ -35,6 +35,8 @@ W, H = 1080, 1920
 OUT_DIR = Path("reels/out")
 TMP_DIR = Path("reels/tmp")
 HISTORY_FILE = OUT_DIR / "history.json"
+MUSIC_DIR = Path("reels/audio")        # your music library (add as many tracks as you like)
+MUSIC_EXTS = {".mp3", ".wav", ".m4a", ".aac", ".ogg"}
 HANDLE = "@TheScrollStroll"
 REPO_RAW = os.environ.get(
     "REPO_RAW_BASE",
@@ -62,6 +64,16 @@ SERIES = [
     "POV: you're an adult and nobody warned you",
     "Tiny adult moments we all pretend are normal",
 ]
+
+# Fallback only: words to look for in track file names, per series
+SERIES_MOOD_HINTS = {
+    SERIES[0]: ["soft", "piano", "warm", "acoustic"],
+    SERIES[1]: ["night", "ambient", "rain", "lofi"],
+    SERIES[2]: ["quirky", "upbeat", "acoustic", "warm"],
+    SERIES[3]: ["lofi", "chill", "soft", "warm"],
+    SERIES[4]: ["quirky", "upbeat", "chill"],
+    SERIES[5]: ["lofi", "chill", "peaceful", "rain"],
+}
 
 CORE_TAGS = ["#relatable", "#adulting", "#everydaylife", "#lifeofanadult", "#dailythoughts"]
 BANNED_TAGS = {"#fyp", "#foryou", "#foryoupage", "#viral", "#explore", "#trending", "#follow",
@@ -153,19 +165,21 @@ def post_with_retry(url, body, headers, attempts=2, timeout=60, label="CALL"):
 def load_history():
     try:
         data = json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
-        return {"hooks": list(data.get("hooks", []))[-30:], "last_series": data.get("last_series", "")}
+        return {"hooks": list(data.get("hooks", []))[-30:], "last_series": data.get("last_series", ""),
+                "last_track": data.get("last_track", "")}
     except Exception:  # noqa: BLE001
-        return {"hooks": [], "last_series": ""}
+        return {"hooks": [], "last_series": "", "last_track": ""}
 
 
-def save_history(history, hook, series):
+def save_history(history, hook, series, track_name=""):
     history["hooks"] = (history["hooks"] + [hook])[-30:]
     history["last_series"] = series
+    history["last_track"] = track_name
     HISTORY_FILE.write_text(json.dumps(history, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 # ------------------------------------------------------------------- script ----
-def ask_gemini_script(series, recent_hooks):
+def ask_gemini_script(series, recent_hooks, track_names):
     key = (os.environ.get("GEMINI_API_KEY") or "").strip()
     if not key:
         print("SCRIPT: GEMINI_API_KEY missing -> built-in script.")
@@ -184,8 +198,11 @@ def ask_gemini_script(series, recent_hooks):
         '  "payoff": a closing line, max 14 words, a warm or funny twist people want to share;\n'
         '  "comment": a short question (max 10 words) that makes viewers comment;\n'
         '  "hashtags": 4 to 6 lowercase hashtags specific to THIS script (no #fyp or #viral);\n'
-        '  "visual": 1 or 2 plain words for a calm background video that fits the mood.\n'
-        f"Do NOT reuse or closely copy these recent hooks:\n{avoid}"
+        '  "visual": 1 or 2 plain words for a calm background video that fits the mood'
+        + (';\n  "music": the ONE track from the list below whose mood best fits this script, '
+           'copied exactly.\n' if track_names else ".\n")
+        + (f"Available music tracks: {', '.join(track_names)}\n" if track_names else "")
+        + f"Do NOT reuse or closely copy these recent hooks:\n{avoid}"
     )
     body = {"contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {"responseMimeType": "application/json"}}
@@ -208,17 +225,18 @@ def ask_gemini_script(series, recent_hooks):
             print(f"SCRIPT: written by Gemini ({model})")
             return {"series": series, "hook": hook, "lines": lines, "payoff": payoff,
                     "comment": comment if 3 <= len(comment) <= 90 else "", "tags": tags,
-                    "visual": clean_search_word(obj.get("visual", ""))}
+                    "visual": clean_search_word(obj.get("visual", "")),
+                    "music": str(obj.get("music", "")).strip()}
         except Exception as exc:  # noqa: BLE001
             print(f"SCRIPT: {model} failed ({exc}), trying next.")
     print("SCRIPT: Gemini unavailable -> built-in script.")
     return None
 
 
-def pick_script(history):
+def pick_script(history, track_names):
     options = [s for s in SERIES if s != history["last_series"]] or SERIES
     series = random.choice(options)
-    script = ask_gemini_script(series, history["hooks"])
+    script = ask_gemini_script(series, history["hooks"], track_names)
     if script:
         return script
     pool = [s for s in FALLBACK_SCRIPTS if s["hook"] not in history["hooks"]] or FALLBACK_SCRIPTS
@@ -240,11 +258,15 @@ def write_wav(path, pcm, rate):
 
 
 def trim_and_normalise(src, dst):
-    """Cut silence at both ends (so the hook starts at 0s) and level the volume."""
+    """Cut silence at both ends (so the hook starts at 0s), then level the volume.
+    Two separate ffmpeg passes: one combined filter chain can stall on audio with no silence."""
     cut = "silenceremove=start_periods=1:start_threshold=-45dB:start_silence=0.04"
-    af = f"{cut},areverse,{cut},areverse,loudnorm=I=-16:TP=-1.5:LRA=11"
-    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(src), "-af", af,
-                    "-ar", "44100", "-ac", "1", str(dst)], check=True)
+    trimmed = TMP_DIR / "voice_trimmed.wav"
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(src),
+                    "-af", f"{cut},areverse,{cut},areverse", str(trimmed)], check=True, timeout=120)
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(trimmed),
+                    "-af", "loudnorm=I=-16:TP=-1.5:LRA=11", "-ar", "44100", "-ac", "1", str(dst)],
+                   check=True, timeout=120)
 
 
 def estimate_word_times(text, duration):
@@ -326,7 +348,7 @@ def synth_edge(text):
         mp3.write_bytes(audio)
         wav = TMP_DIR / "voice.wav"
         subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(mp3),
-                        "-af", "loudnorm=I=-16:TP=-1.5:LRA=11", "-ar", "44100", "-ac", "1", str(wav)], check=True)
+                        "-af", "loudnorm=I=-16:TP=-1.5:LRA=11", "-ar", "44100", "-ac", "1", str(wav)], check=True, timeout=120)
         dur = wav_duration(wav)
         if dur < 3:
             return None
@@ -346,6 +368,56 @@ def make_voice(text):
     dur = max(10.0, len(text.split()) * 0.40 + 1.0)
     print(f"VOICE: all voice options failed -> SILENT Reel ({dur:.0f}s). Check the VOICE lines above.")
     return None, dur, estimate_word_times(text, dur)
+
+
+# -------------------------------------------------------------------- music ----
+def list_tracks():
+    """All audio files in reels/audio (README and other files are ignored)."""
+    if not MUSIC_DIR.exists():
+        return []
+    return sorted(p for p in MUSIC_DIR.iterdir() if p.is_file() and p.suffix.lower() in MUSIC_EXTS)
+
+
+def pick_music(tracks, script, last_track):
+    """Gemini's mood pick -> keyword match for the series -> random. Avoids repeating the last track."""
+    if not tracks:
+        print("MUSIC: no audio files in reels/audio -> no music.")
+        return None
+    pool = [t for t in tracks if t.name != last_track] or tracks
+    wanted = (script.get("music") or "").lower().strip()
+    if wanted:
+        for t in pool:
+            if wanted in (t.name.lower(), t.stem.lower()):
+                print(f"MUSIC: Gemini matched the mood -> {t.name}")
+                return t
+        print(f"MUSIC: Gemini suggested '{wanted}', which isn't in reels/audio -> using mood keywords.")
+    hints = SERIES_MOOD_HINTS.get(script.get("series"), [])
+    scored = sorted(((sum(h in t.stem.lower() for h in hints), random.random(), t) for t in pool), reverse=True)
+    if scored and scored[0][0] > 0:
+        print(f"MUSIC: keyword match for '{script.get('series')}' -> {scored[0][2].name}")
+        return scored[0][2]
+    choice = random.choice(pool)
+    print(f"MUSIC: random pick -> {choice.name}")
+    return choice
+
+
+def mix_music(voice, total, track, out_path):
+    """Voice + quiet looping music. Music dips automatically whenever the voice speaks."""
+    voice_in = ["-i", str(voice)] if voice else ["-f", "lavfi", "-t", f"{total:.2f}", "-i", "anullsrc=r=44100:cl=mono"]
+    fade_out_at = max(0.0, total - 1.5)
+    graph = (
+        f"[1:a]atrim=0:{total:.2f},asetpts=PTS-STARTPTS,loudnorm=I=-28:TP=-3:LRA=7,"
+        f"afade=t=in:st=0:d=0.8,afade=t=out:st={fade_out_at:.2f}:d=1.5,aformat=sample_rates=44100:channel_layouts=mono[m];"
+        f"[0:a]apad=whole_dur={total:.2f},aformat=sample_rates=44100:channel_layouts=mono,asplit[v][sc];"
+        "[m][sc]sidechaincompress=threshold=0.02:ratio=10:attack=15:release=350[duck];"
+        "[v][duck]amix=inputs=2:duration=first:normalize=0,alimiter=limit=0.95[a]"
+    )
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", *voice_in,
+                    "-stream_loop", "-1", "-i", str(track),
+                    "-filter_complex", graph, "-map", "[a]", "-t", f"{total:.2f}",
+                    "-ar", "44100", "-ac", "1", str(out_path)], check=True, timeout=120)
+    print(f"MUSIC: mixed in {track.name}")
+    return out_path
 
 
 # --------------------------------------------------------------- background ----
@@ -517,7 +589,7 @@ def build_video(bg, audio, total, chunk_files, chunks, static_png, out_path):
     cmd += ["-filter_complex", ";".join(graph), "-map", "[v]", "-map", f"{audio_idx}:a",
             "-t", f"{total:.2f}", "-c:v", "libx264", "-preset", "veryfast", "-crf", "25",
             "-c:a", "aac", "-b:a", "128k", "-ar", "44100", "-movflags", "+faststart", str(out_path)]
-    subprocess.run(cmd, check=True)
+    subprocess.run(cmd, check=True, timeout=900)
 
 
 # ------------------------------------------------------------------ caption ----
@@ -543,13 +615,23 @@ def main():
     TMP_DIR.mkdir(parents=True, exist_ok=True)
 
     history = load_history()
-    script = pick_script(history)
+    tracks = list_tracks()
+    script = pick_script(history, [t.stem for t in tracks])
     spoken = " ".join([script["hook"], *script["lines"], script["payoff"]])
     print(f"SERIES: {script['series']}\nHOOK: {script['hook']}\nSPOKEN: {spoken}")
 
     audio, voice_dur, words = make_voice(spoken)
     chunks = make_chunks(words, len(script["hook"].split()))
     total = round(voice_dur + 0.7, 2)  # short hold at the end
+
+    voice_ok = audio is not None
+    track = pick_music(tracks, script, history.get("last_track", ""))
+    if track:
+        try:
+            audio = mix_music(audio, total, track, TMP_DIR / "final_audio.wav")
+        except Exception as exc:  # noqa: BLE001
+            print(f"MUSIC: mixing failed ({exc}) -> continuing without music.")
+            track = None
 
     static_png = TMP_DIR / "static.png"
     render_static_png(script["series"], static_png)
@@ -578,16 +660,17 @@ def main():
         "video_url": f"{REPO_RAW}/reels/out/reel.mp4?v={stamp}",
         "duration_seconds": total,
         "generated_at": stamp,
-        "voice": "silent" if audio is None else "voiceover",
+        "voice": "voiceover" if voice_ok else "silent",
+        "music": track.name if track else "none",
     }
     (OUT_DIR / "reel.json").write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
-    save_history(history, script["hook"], script["series"])
+    save_history(history, script["hook"], script["series"], track.name if track else "")
     print("DONE:", out_mp4, f"({out_mp4.stat().st_size / 1e6:.1f} MB, {total:.1f}s)")
 
 
 if __name__ == "__main__":
     try:
         main()
-    except subprocess.CalledProcessError as exc:
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
         print("FFmpeg failed:", exc, file=sys.stderr)
         sys.exit(1)
