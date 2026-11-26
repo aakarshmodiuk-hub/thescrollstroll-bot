@@ -200,14 +200,16 @@ def load_history():
     try:
         data = json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
         return {"hooks": list(data.get("hooks", []))[-30:], "last_series": data.get("last_series", ""),
-                "last_track": data.get("last_track", "")}
+                "last_track": data.get("last_track", ""),
+                "recent_series": list(data.get("recent_series", []))[-(len(SERIES) - 1):]}
     except Exception:  # noqa: BLE001
-        return {"hooks": [], "last_series": "", "last_track": ""}
+        return {"hooks": [], "last_series": "", "last_track": "", "recent_series": []}
 
 
 def save_history(history, hook, series, track_name=""):
     history["hooks"] = (history["hooks"] + [hook])[-30:]
     history["last_series"] = series
+    history["recent_series"] = (history.get("recent_series", []) + [series])[-(len(SERIES) - 1):]
     history["last_track"] = track_name
     HISTORY_FILE.write_text(json.dumps(history, indent=2, ensure_ascii=False), encoding="utf-8")
 
@@ -271,12 +273,16 @@ def ask_gemini_script(series, recent_hooks, track_names):
 
 
 def pick_script(history, track_names):
-    options = [s for s in SERIES if s != history["last_series"]] or SERIES
+    # cycle through every series before any repeats: avoid the last len(SERIES)-1 used
+    recent = history.get("recent_series", [])
+    options = [x for x in SERIES if x not in recent] or [x for x in SERIES if x != history["last_series"]] or SERIES
     series = random.choice(options)
     script = ask_gemini_script(series, history["hooks"], track_names)
     if script:
         return script
-    pool = [s for s in FALLBACK_SCRIPTS if s["hook"] not in history["hooks"]] or FALLBACK_SCRIPTS
+    recent = history.get("recent_series", [])
+    fresh = [f for f in FALLBACK_SCRIPTS if f["series"] not in recent and f["hook"] not in history["hooks"]]
+    pool = fresh or [f for f in FALLBACK_SCRIPTS if f["hook"] not in history["hooks"]] or FALLBACK_SCRIPTS
     return dict(random.choice(pool))
 
 
@@ -302,7 +308,7 @@ def trim_and_normalise(src, dst):
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(src),
                     "-af", f"{cut},areverse,{cut},areverse", str(trimmed)], check=True, timeout=120)
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(trimmed),
-                    "-af", "loudnorm=I=-16:TP=-1.5:LRA=11", "-ar", "44100", "-ac", "1", str(dst)],
+                    "-af", "atempo=1.2,loudnorm=I=-16:TP=-1.5:LRA=11", "-ar", "44100", "-ac", "1", str(dst)],
                    check=True, timeout=120)
 
 
@@ -415,19 +421,25 @@ def list_tracks():
     return sorted(p for p in MUSIC_DIR.iterdir() if p.is_file() and p.suffix.lower() in MUSIC_EXTS)
 
 
+def norm(name):
+    """Lowercase, no extension, letters and digits only: 'Quirky Upbeat.MP3' == 'quirky-upbeat'."""
+    return re.sub(r"[^a-z0-9]", "", Path(str(name)).stem.lower())
+
+
 def pick_music(tracks, script, last_track):
     """Gemini's mood pick -> keyword match for the series -> random. Avoids repeating the last track."""
+    print(f"MUSIC: found {len(tracks)} track(s) in {MUSIC_DIR}: " + (", ".join(t.name for t in tracks) or "none"))
     if not tracks:
         print("MUSIC: no audio files in reels/audio -> no music.")
         return None
     pool = [t for t in tracks if t.name != last_track] or tracks
-    wanted = (script.get("music") or "").lower().strip()
+    wanted = norm(script.get("music") or "")
     if wanted:
         for t in pool:
-            if wanted in (t.name.lower(), t.stem.lower()):
+            if wanted == norm(t.name):
                 print(f"MUSIC: Gemini matched the mood -> {t.name}")
                 return t
-        print(f"MUSIC: Gemini suggested '{wanted}', which isn't in reels/audio -> using mood keywords.")
+        print(f"MUSIC: Gemini suggested '{script.get('music')}', which isn't in the list above -> using mood keywords.")
     hints = SERIES_MOOD_HINTS.get(script.get("series"), [])
     scored = sorted(((sum(h in t.stem.lower() for h in hints), random.random(), t) for t in pool), reverse=True)
     if scored and scored[0][0] > 0:
