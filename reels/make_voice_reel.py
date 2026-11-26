@@ -112,52 +112,37 @@ BG_TERMS = ["coffee morning", "city walk", "rain window", "train window", "night
 
 # Original scripts, used only if Gemini is unavailable
 FALLBACK_SCRIPTS = [
-    {"series": SERIES[0], "hook": "Nobody warns you how tiring being an adult is.",
-     "lines": ["You pay bills and call it a personality.",
-               "You get excited about a clean fridge.",
-               "Your social battery dies at nine p.m."],
-     "payoff": "And somehow, we're all just winging it together.",
+    {"series": SERIES[0], "hook": "Nobody warns you adulthood is this tiring.",
+     "lines": ["You call bills a personality.", "Nine p.m. is your new bedtime."],
+     "payoff": "We're all just winging it.",
      "comment": "Which one is you?", "tags": ["#adultlife"], "visual": "coffee morning"},
-    {"series": SERIES[1], "hook": "It's 2 a.m. and your brain just remembered everything.",
-     "lines": ["That awkward thing you said in 2016.",
-               "The email you forgot to send.",
-               "Whether you left the oven on."],
-     "payoff": "Sleep is a suggestion your mind keeps declining.",
+    {"series": SERIES[1], "hook": "2 a.m. and your brain remembered everything.",
+     "lines": ["That awkward thing from 2016.", "Whether you left the oven on."],
+     "payoff": "Sleep is optional, apparently.",
      "comment": "What keeps you up?", "tags": ["#overthinking"], "visual": "night city"},
-    {"series": SERIES[11], "hook": "Remember when weekends meant plans?",
-     "lines": ["Now it's a nap and zero obligations.",
-               "Cancelled plans feel like winning the lottery.",
-               "Your bed is the best place you'll ever go."],
-     "payoff": "Growing up is just getting really good at staying in.",
-     "comment": "Be honest, who agrees?", "tags": ["#introvert"], "visual": "cozy room"},
-    {"series": SERIES[3], "hook": "If you cook at home, you already know this feeling.",
-     "lines": ["You bought fresh herbs and used one leaf.",
-               "The recipe said 'quick' and lied.",
-               "Leftovers were always the plan."],
-     "payoff": "Dinner is just a small daily win we all quietly chase.",
+    {"series": SERIES[3], "hook": "If you cook at home, you know this feeling.",
+     "lines": ["Fresh herbs, one leaf used.", "'Quick recipe' lied again."],
+     "payoff": "Dinner is a small daily win.",
      "comment": "What do you always overcook?", "tags": ["#homecooking"], "visual": "kitchen"},
-    {"series": SERIES[5], "hook": "Monday mornings have their own special kind of sadness.",
-     "lines": ["The alarm goes off and negotiates for five more minutes.",
-               "Coffee becomes your whole personality.",
-               "By lunch, the weekend feels like a rumour."],
-     "payoff": "Somehow we all get through it together.",
-     "comment": "Be honest, how's your Monday going?", "tags": ["#mondayvibes"], "visual": "city walk"},
-    {"series": SERIES[8], "hook": "Your pet has definitely decided who's in charge.",
-     "lines": ["They wait by the door like you're late from work.",
-               "They sleep on your laptop when you need it most.",
-               "They look hurt when you leave for ten minutes."],
-     "payoff": "Honestly, they run the household and we just pay the bills.",
-     "comment": "Who runs your home?", "tags": ["#petlife"], "visual": "cozy room"},    {"series": SERIES[12], "hook": "Some meetings could have been one sentence.",
-     "lines": ["Twenty slides to say we need more time.",
-               "Someone says 'quick sync' and it lasts an hour.",
-               "Everyone nods, nobody turns their camera on."],
-     "payoff": "Honestly, the best part is the email that follows.",
+    {"series": SERIES[5], "hook": "Monday mornings have their own sadness.",
+     "lines": ["Alarm negotiates five more minutes.", "Coffee becomes your personality."],
+     "payoff": "Weekend feels like a rumour.",
+     "comment": "How's your Monday?", "tags": ["#mondayvibes"], "visual": "city walk"},
+    {"series": SERIES[8], "hook": "Your pet has decided who's in charge.",
+     "lines": ["They wait by the door like you're late.", "They sleep on your laptop."],
+     "payoff": "We pay the bills, they run the house.",
+     "comment": "Who runs your home?", "tags": ["#petlife"], "visual": "cozy room"},
+    {"series": SERIES[11], "hook": "Remember when weekends meant plans?",
+     "lines": ["Now it's a nap and zero obligations.", "Cancelled plans feel like a win."],
+     "payoff": "Growing up is getting good at staying in.",
+     "comment": "Be honest, who agrees?", "tags": ["#introvert"], "visual": "cozy room"},
+    {"series": SERIES[12], "hook": "Some meetings could have been one sentence.",
+     "lines": ["Twenty slides to say we need time.", "'Quick sync' lasts an hour."],
+     "payoff": "The best part is the follow-up email.",
      "comment": "Which meeting ruined your afternoon?", "tags": ["#worklife"], "visual": "laptop desk"},
-    {"series": SERIES[14], "hook": "Every office has one person who knows where everything is.",
-     "lines": ["Nobody remembers when they started doing it.",
-               "They get asked for the password, the printer fix and the birthday cake.",
-               "And they still answer with a smile."],
-     "payoff": "Give that person a coffee today, they've earned it.",
+    {"series": SERIES[14], "hook": "Every office has one person who knows everything.",
+     "lines": ["Nobody remembers when that started.", "They still answer with a smile."],
+     "payoff": "Buy that person a coffee today.",
      "comment": "Who's your office hero?", "tags": ["#officelife"], "visual": "office window"},
 ]
 
@@ -239,14 +224,15 @@ def ask_gemini_script(series, recent_hooks, track_names):
         f'Series title (shown on screen): "{series}".\n'
         "Audience: 18-40 year olds. Topic: relatable everyday life (food, phones, friends, family, "
         "pets, shopping, commuting, weekends, sleep, office and work life, small daily moments). "
+        "Total spoken script must be under 25 words. Short, fast, punchy. "
         "Work jokes must be funny and specific (meetings, emails, colleagues, video calls), never "
         "preachy or motivational. Tone: spoken, conversational, funny-because-true, "
         "a little self-deprecating, never preachy. Use contractions. No emojis.\n"
         "Return ONLY a JSON object with these keys:\n"
-        '  "hook": one scroll-stopping opening line, max 12 words, speaks directly to "you";\n'
-        '  "lines": array of exactly 3 short spoken lines, max 14 words each, each a different '
+        '  "hook": one scroll-stopping opening line, max 8 words, speaks directly to "you";\n'
+        '  "lines": array of exactly 2 very short spoken lines, max 7 words each, each a different '
         "relatable observation that fits the series title;\n"
-        '  "payoff": a closing line, max 14 words, a warm or funny twist people want to share;\n'
+        '  "payoff": a punchline, max 7 words, a funny twist people want to share;\n'
         '  "comment": a short question (max 10 words) that makes viewers comment;\n'
         '  "hashtags": 4 to 6 lowercase hashtags specific to THIS script (no #fyp or #viral);\n'
         '  "visual": 1 or 2 plain words for a calm background video that fits the mood'
@@ -269,7 +255,7 @@ def ask_gemini_script(series, recent_hooks, track_names):
             payoff = end_punct(clean_text(obj.get("payoff", "")))
             comment = clean_text(obj.get("comment", ""))
             words = len(" ".join([hook, *lines, payoff]).split())
-            if not (3 <= len(hook) <= 110 and 2 <= len(lines) <= 4 and len(payoff) >= 3 and 24 <= words <= 80):
+            if not (3 <= len(hook) <= 80 and len(lines) == 2 and len(payoff) >= 3 and 12 <= words <= 30):
                 print(f"SCRIPT: {model} answer didn't fit the format ({words} words), trying next.")
                 continue
             tags = [t for t in (clean_tag(x) for x in obj.get("hashtags", [])) if t and t not in BANNED_TAGS]
@@ -381,9 +367,9 @@ def synth_edge(text):
 
     async def run():
         try:
-            comm = edge_tts.Communicate(text, EDGE_VOICE, rate="+6%", boundary="WordBoundary")
+            comm = edge_tts.Communicate(text, EDGE_VOICE, rate="+12%", boundary="WordBoundary")
         except TypeError:
-            comm = edge_tts.Communicate(text, EDGE_VOICE, rate="+6%")
+            comm = edge_tts.Communicate(text, EDGE_VOICE, rate="+12%")
         audio, words = bytearray(), []
         async for ch in comm.stream():
             if ch["type"] == "audio":
@@ -673,7 +659,7 @@ def main():
 
     audio, voice_dur, words = make_voice(spoken)
     chunks = make_chunks(words, len(script["hook"].split()))
-    total = round(voice_dur + 0.7, 2)  # short hold at the end
+    total = round(voice_dur + 0.3, 2)  # short hold at the end
 
     voice_ok = audio is not None
     track = pick_music(tracks, script, history.get("last_track", ""))
